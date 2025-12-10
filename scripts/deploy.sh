@@ -53,6 +53,38 @@ if [ "$(whoami)" != "${DEPLOY_USER:-$USER}" ]; then
     log_warning "Running as $(whoami), expected ${DEPLOY_USER:-$USER}"
 fi
 
+###############################################################################
+# System Dependencies (Idempotent)
+###############################################################################
+
+log_info "Checking system dependencies..."
+
+# Update package list
+if command -v apt-get &> /dev/null; then
+    log_info "Updating package list..."
+    sudo apt-get update -qq || log_warning "Failed to update package list"
+    
+    # Install Python venv if not present
+    if ! dpkg -l | grep -q python3-venv; then
+        log_info "Installing python3-venv..."
+        sudo apt-get install -y python3-venv python3-pip
+        log_success "Installed python3-venv"
+    else
+        log_info "python3-venv already installed"
+    fi
+    
+    # Install other essential packages
+    REQUIRED_PACKAGES="curl git build-essential"
+    for pkg in $REQUIRED_PACKAGES; do
+        if ! dpkg -l | grep -q "^ii  $pkg "; then
+            log_info "Installing $pkg..."
+            sudo apt-get install -y "$pkg" || log_warning "Failed to install $pkg"
+        fi
+    done
+    
+    log_success "System dependencies ready"
+fi
+
 # Check if app directory exists
 if [ ! -d "$APP_DIR" ]; then
     log_error "Application directory not found: $APP_DIR"

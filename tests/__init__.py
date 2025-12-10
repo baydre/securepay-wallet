@@ -1,0 +1,3 @@
+"""
+SecurePay Wallet Test Suite
+"""

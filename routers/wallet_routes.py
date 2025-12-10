@@ -334,7 +334,7 @@ async def transfer_funds(
         )
 
 
-@router.get("/transactions", response_model=List[TransactionResponse])
+@router.get("/transactions")
 async def get_transactions(
     limit: int = 50,
     offset: int = 0,
@@ -395,10 +395,10 @@ async def get_transactions(
         models.Transaction.created_at.desc()
     ).limit(limit).offset(offset).all()
     
-    return transactions
+    return {"transactions": transactions}
 
 
-@router.get("/transactions/pending", response_model=List[TransactionResponse])
+@router.get("/transactions/pending")
 async def get_pending_transactions(
     current_user: models.User = Depends(get_current_user_or_service),
     db: Session = Depends(get_db)
@@ -436,10 +436,10 @@ async def get_pending_transactions(
         models.Transaction.created_at.desc()
     ).all()
     
-    return transactions
+    return {"transactions": transactions}
 
 
-@router.get("/transactions/completed", response_model=List[TransactionResponse])
+@router.get("/transactions/completed")
 async def get_completed_transactions(
     current_user: models.User = Depends(get_current_user_or_service),
     db: Session = Depends(get_db)
@@ -472,7 +472,7 @@ async def get_completed_transactions(
         models.Transaction.created_at.desc()
     ).all()
     
-    return transactions
+    return {"transactions": transactions}
 
 
 @router.get("/transactions/summary")
@@ -507,14 +507,27 @@ async def get_transactions_summary(
     ).all()
     
     # Calculate summary
+    pending_txs = [t for t in transactions if t.status == "pending"]
+    success_txs = [t for t in transactions if t.status == "success"]
+    failed_txs = [t for t in transactions if t.status == "failed"]
+    
     summary = {
         "wallet_number": wallet.wallet_number,
         "current_balance": wallet.balance,
         "total_transactions": len(transactions),
         "by_status": {
-            "pending": len([t for t in transactions if t.status == "pending"]),
-            "success": len([t for t in transactions if t.status == "success"]),
-            "failed": len([t for t in transactions if t.status == "failed"])
+            "pending": {
+                "count": len(pending_txs),
+                "total_amount": sum(t.amount for t in pending_txs)
+            },
+            "success": {
+                "count": len(success_txs),
+                "total_amount": sum(t.amount for t in success_txs)
+            },
+            "failed": {
+                "count": len(failed_txs),
+                "total_amount": sum(t.amount for t in failed_txs)
+            }
         },
         "by_type": {
             "deposits": sum(t.amount for t in transactions if t.type == "deposit" and t.status == "success"),
@@ -522,8 +535,8 @@ async def get_transactions_summary(
             "transfers_out": sum(t.amount for t in transactions if t.type == "transfer" and t.status == "success" and t.sender_wallet_number),
             "transfers_in": sum(t.amount for t in transactions if t.type == "transfer" and t.status == "success" and t.recipient_wallet_number)
         },
-        "pending_amount": sum(t.amount for t in transactions if t.status == "pending"),
-        "total_success_amount": sum(t.amount for t in transactions if t.status == "success" and t.type == "deposit")
+        "pending_amount": sum(t.amount for t in pending_txs),
+        "total_success_amount": sum(t.amount for t in success_txs if t.type == "deposit")
     }
     
     return summary

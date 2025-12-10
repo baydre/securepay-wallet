@@ -56,7 +56,7 @@ class DepositResponse(BaseModel):
 
 
 class TransferRequest(BaseModel):
-    recipient_wallet_number: str = Field(..., min_length=10, max_length=10)
+    recipient_wallet_number: str = Field(..., min_length=13, max_length=13, pattern=r"^WAL\d{10}$")
     amount: float = Field(..., gt=0)
     description: Optional[str] = None
     

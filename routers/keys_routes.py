@@ -180,7 +180,7 @@ async def rollover_api_key(
     )
 
 
-@router.delete("/{key_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{key_id}", status_code=status.HTTP_200_OK)
 async def delete_api_key(
     key_id: int,
     current_user: models.User = Depends(get_current_user),
@@ -204,4 +204,4 @@ async def delete_api_key(
     api_key.is_active = False
     db.commit()
     
-    return None
+    return {"message": "API key deleted successfully"}

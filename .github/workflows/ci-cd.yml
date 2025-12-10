@@ -208,6 +208,11 @@ jobs:
           ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'ENDSSH'
             set -e
             
+            # Install system dependencies first
+            echo "Installing system dependencies..."
+            sudo apt-get update -qq
+            sudo apt-get install -y python3-venv python3-pip curl git build-essential postgresql-client
+            
             # Ensure deploy directory exists
             mkdir -p "${{ secrets.DEPLOY_PATH }}"
             cd "${{ secrets.DEPLOY_PATH }}"

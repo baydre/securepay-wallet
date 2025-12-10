@@ -185,22 +185,47 @@ jobs:
           SERVER_USER: ${{ secrets.SERVER_USER }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         run: |
-          ssh $SERVER_USER@$SERVER_HOST << 'ENDSSH'
+          ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'ENDSSH'
             set -e
-            cd ${{ secrets.DEPLOY_PATH }}
             
-            # Pull latest changes
-            git fetch origin main
-            git reset --hard origin/main
+            # Ensure deploy directory exists
+            mkdir -p "${{ secrets.DEPLOY_PATH }}"
+            cd "${{ secrets.DEPLOY_PATH }}"
             
-            # Activate virtual environment
+            # Check if .git directory exists
+            if [ -d .git ]; then
+              echo "Updating existing git repository..."
+              git fetch origin main
+              git reset --hard origin/main
+              git clean -fd
+            else
+              echo "No git repository found - cloning from GitHub..."
+              # Remove any existing files and clone fresh
+              rm -rf ./* ./..?* 2>/dev/null || true
+              git clone --depth 1 --branch main git@github.com:${{ github.repository }}.git .
+            fi
+            
+            echo "Code deployed successfully"
+            
+            # Create or activate virtualenv
+            if [ ! -d venv ]; then
+              echo "Creating new virtual environment..."
+              python3 -m venv venv
+            fi
             source venv/bin/activate
             
             # Install/update dependencies
+            echo "Installing dependencies with uv..."
+            pip install uv
             uv pip install -r requirements.txt
             
-            # Run idempotent deployment script
+            # Ensure scripts are executable
+            chmod +x scripts/deploy.sh
+            
+            # Run idempotent deployment script (creates systemd unit if needed)
+            echo "Running deployment script..."
             bash scripts/deploy.sh
+          ENDSSH
           ENDSSH
       
       - name: Run database migrations
@@ -224,12 +249,24 @@ jobs:
           SERVER_USER: ${{ secrets.SERVER_USER }}
         run: |
           ssh $SERVER_USER@$SERVER_HOST << 'ENDSSH'
-            # Graceful restart with zero downtime
-            sudo systemctl reload securepay-wallet || sudo systemctl restart securepay-wallet
+            set -e
+            
+            # Check if systemd unit exists
+            if systemctl list-unit-files | grep -q '^securepay-wallet.service'; then
+              echo "🔄 Restarting securepay-wallet service..."
+              sudo systemctl reload securepay-wallet || sudo systemctl restart securepay-wallet
+            else
+              echo "❌ ERROR: securepay-wallet.service not found in systemd"
+              echo "Check that scripts/deploy.sh creates /etc/systemd/system/securepay-wallet.service"
+              echo "The service must be installed and enabled before restart can succeed"
+              exit 5
+            fi
             
             # Health check
+            echo "🏥 Running health check..."
             sleep 5
             curl -f http://localhost:8000/health || exit 1
+            echo "✅ Service is healthy"
           ENDSSH
       
       - name: Notify deployment success
@@ -245,12 +282,22 @@ jobs:
           SERVER_USER: ${{ secrets.SERVER_USER }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         run: |
-          ssh $SERVER_USER@$SERVER_HOST << 'ENDSSH'
-            cd ${{ secrets.DEPLOY_PATH }}
+          echo "Rolling back to previous version..."
+          ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'ENDSSH'
+            set -e
+            cd "${{ secrets.DEPLOY_PATH }}"
             
-            # Rollback to previous commit
-            git reset --hard HEAD~1
-            
-            # Restart with previous version
-            sudo systemctl restart securepay-wallet
+            # Check if .git exists for git-based rollback
+            if [ -d .git ]; then
+              echo "Rolling back using git..."
+              git reset --hard HEAD~1
+              source venv/bin/activate
+              uv pip install -r requirements.txt
+              sudo systemctl restart securepay-wallet || true
+              echo "Rollback complete"
+            else
+              echo "Cannot rollback: git repository not found"
+              echo "Manual intervention required"
+              exit 1
+            fi
           ENDSSH

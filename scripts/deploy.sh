@@ -247,6 +247,215 @@ sudo systemctl enable "$SERVICE_NAME" 2>/dev/null || true
 log_success "Service configured"
 
 ###############################################################################
+# Nginx Configuration & SSL Setup (Idempotent)
+###############################################################################
+
+log_info "Configuring Nginx reverse proxy..."
+
+# Check if Nginx is installed
+if ! command -v nginx &> /dev/null; then
+    log_warning "Nginx not installed. Installing..."
+    sudo apt update -qq
+    sudo apt install -y nginx
+    log_success "Nginx installed"
+else
+    log_info "Nginx already installed"
+fi
+
+# Set domain from environment or prompt
+DOMAIN="${DOMAIN:-}"
+if [ -z "$DOMAIN" ]; then
+    log_warning "DOMAIN environment variable not set"
+    log_info "Skipping SSL configuration (will use HTTP only)"
+    DOMAIN="localhost"
+    USE_SSL=false
+else
+    log_info "Configuring for domain: $DOMAIN"
+    USE_SSL=true
+fi
+
+# Create Nginx configuration
+NGINX_CONF="/etc/nginx/sites-available/$APP_NAME"
+NGINX_ENABLED="/etc/nginx/sites-enabled/$APP_NAME"
+
+if [ "$USE_SSL" = true ]; then
+    # Configuration with SSL (will be updated after certbot)
+    sudo tee "$NGINX_CONF" > /dev/null <<EOF
+# HTTP - Redirect to HTTPS
+server {
+    listen 80;
+    server_name $DOMAIN;
+    
+    # Let's Encrypt challenge location
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
+    
+    # Redirect all other traffic to HTTPS
+    location / {
+        return 301 https://\$host\$request_uri;
+    }
+}
+
+# HTTPS - Main application
+server {
+    listen 443 ssl http2;
+    server_name $DOMAIN;
+    
+    # SSL certificates (will be configured by certbot)
+    ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
+    
+    # SSL configuration
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 10m;
+    
+    # Security headers
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    
+    # Client body size
+    client_max_body_size 10M;
+    
+    # Logging
+    access_log /var/log/nginx/${APP_NAME}_access.log;
+    error_log /var/log/nginx/${APP_NAME}_error.log;
+    
+    # Proxy to FastAPI application
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_cache_bypass \$http_upgrade;
+        
+        # Timeouts
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+    
+    # Static files (if any)
+    location /static {
+        alias $APP_DIR/static;
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+}
+EOF
+else
+    # HTTP only configuration (for local/testing)
+    sudo tee "$NGINX_CONF" > /dev/null <<EOF
+server {
+    listen 80;
+    server_name $DOMAIN;
+    
+    # Logging
+    access_log /var/log/nginx/${APP_NAME}_access.log;
+    error_log /var/log/nginx/${APP_NAME}_error.log;
+    
+    # Client body size
+    client_max_body_size 10M;
+    
+    # Proxy to FastAPI application
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_cache_bypass \$http_upgrade;
+        
+        # Timeouts
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+    
+    # Static files (if any)
+    location /static {
+        alias $APP_DIR/static;
+        expires 30d;
+    }
+}
+EOF
+fi
+
+log_success "Nginx configuration created"
+
+# Enable site (idempotent)
+if [ ! -L "$NGINX_ENABLED" ]; then
+    sudo ln -sf "$NGINX_CONF" "$NGINX_ENABLED"
+    log_success "Nginx site enabled"
+fi
+
+# Remove default site if it exists
+if [ -L "/etc/nginx/sites-enabled/default" ]; then
+    sudo rm /etc/nginx/sites-enabled/default
+    log_info "Removed default Nginx site"
+fi
+
+# Test Nginx configuration
+if sudo nginx -t 2>/dev/null; then
+    log_success "Nginx configuration valid"
+    sudo systemctl reload nginx
+    log_success "Nginx reloaded"
+else
+    log_error "Nginx configuration test failed"
+    sudo nginx -t
+    exit 1
+fi
+
+# SSL Certificate Setup with Certbot
+if [ "$USE_SSL" = true ]; then
+    log_info "Setting up SSL certificate with Let's Encrypt..."
+    
+    # Check if certbot is installed
+    if ! command -v certbot &> /dev/null; then
+        log_warning "Certbot not installed. Installing..."
+        sudo apt update -qq
+        sudo apt install -y certbot python3-certbot-nginx
+        log_success "Certbot installed"
+    fi
+    
+    # Check if certificate already exists
+    if [ -d "/etc/letsencrypt/live/$DOMAIN" ]; then
+        log_info "SSL certificate already exists for $DOMAIN"
+        log_info "Certificate will auto-renew via systemd timer"
+    else
+        log_info "Obtaining SSL certificate for $DOMAIN..."
+        log_warning "Make sure:"
+        log_warning "  1. Domain $DOMAIN points to this server's IP"
+        log_warning "  2. Ports 80 and 443 are open in firewall"
+        
+        # Attempt to obtain certificate
+        if sudo certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --email "admin@$DOMAIN" --redirect; then
+            log_success "SSL certificate obtained successfully!"
+        else
+            log_error "Failed to obtain SSL certificate"
+            log_warning "Falling back to HTTP only"
+            log_info "To retry later, run: sudo certbot --nginx -d $DOMAIN"
+        fi
+    fi
+    
+    # Enable certbot renewal timer
+    sudo systemctl enable certbot.timer 2>/dev/null || true
+    log_info "Certbot auto-renewal enabled"
+fi
+
+###############################################################################
 # Health Check Before Restart
 ###############################################################################
 
@@ -333,14 +542,28 @@ echo "   • Service: $SERVICE_NAME"
 echo "   • PID: $NEW_PID"
 echo ""
 echo "🔗 Endpoints:"
-echo "   • Health: http://localhost:8000/health"
-echo "   • API Docs: http://localhost:8000/docs"
-echo "   • Webhooks: http://localhost:8000/webhook/paystack"
+if [ "$USE_SSL" = true ]; then
+echo "   • Health: https://$DOMAIN/health"
+echo "   • API Docs: https://$DOMAIN/docs"
+echo "   • Webhooks: https://$DOMAIN/webhook/paystack"
+else
+echo "   • Health: http://$DOMAIN/health (or http://localhost:8000/health)"
+echo "   • API Docs: http://$DOMAIN/docs (or http://localhost:8000/docs)"
+echo "   • Webhooks: http://$DOMAIN/webhook/paystack"
+fi
+echo ""
+echo "🌐 Nginx Status:"
+echo "   • Config: /etc/nginx/sites-available/$APP_NAME"
+echo "   • Logs: /var/log/nginx/${APP_NAME}_*.log"
+echo "   • SSL: $([ "$USE_SSL" = true ] && echo "Enabled (Let's Encrypt)" || echo "Disabled")"
 echo ""
 echo "📝 Useful Commands:"
 echo "   • View logs: sudo journalctl -u $SERVICE_NAME -f"
 echo "   • Check status: sudo systemctl status $SERVICE_NAME"
 echo "   • Restart: sudo systemctl restart $SERVICE_NAME"
+echo "   • Nginx logs: sudo tail -f /var/log/nginx/${APP_NAME}_access.log"
+echo "   • Nginx reload: sudo systemctl reload nginx"
+echo "   • SSL renewal: sudo certbot renew --dry-run"
 echo "   • Rollback: git reset --hard HEAD~1 && bash scripts/deploy.sh"
 echo ""
 echo "💾 Backup Location: $BACKUP_DIR"

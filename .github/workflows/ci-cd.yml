@@ -154,6 +154,21 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       
+      - name: Validate deployment secrets
+        run: |
+          if [ -z "${{ secrets.SSH_PRIVATE_KEY }}" ] || [ -z "${{ secrets.SERVER_HOST }}" ] || [ -z "${{ secrets.SERVER_USER }}" ] || [ -z "${{ secrets.DEPLOY_PATH }}" ]; then
+            echo "❌ Missing one or more required deployment secrets:"
+            echo "   - SSH_PRIVATE_KEY: $([ -z "${{ secrets.SSH_PRIVATE_KEY }}" ] && echo "MISSING" || echo "present")"
+            echo "   - SERVER_HOST: $([ -z "${{ secrets.SERVER_HOST }}" ] && echo "MISSING" || echo "present")"
+            echo "   - SERVER_USER: $([ -z "${{ secrets.SERVER_USER }}" ] && echo "MISSING" || echo "present")"
+            echo "   - DEPLOY_PATH: $([ -z "${{ secrets.DEPLOY_PATH }}" ] && echo "MISSING" || echo "present")"
+            echo ""
+            echo "Please add these secrets in: Settings → Secrets and variables → Actions"
+            echo "See docs/GITHUB_SECRETS.md for setup instructions"
+            exit 1
+          fi
+          echo "✅ All deployment secrets are configured"
+      
       - name: Set up SSH
         uses: webfactory/ssh-agent@v0.9.0
         with:

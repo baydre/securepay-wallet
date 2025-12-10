@@ -52,7 +52,9 @@ jobs:
           SECRET_KEY: test-secret-key-for-ci
           GOOGLE_CLIENT_ID: test-client-id
           GOOGLE_CLIENT_SECRET: test-client-secret
+          GOOGLE_REDIRECT_URI: http://localhost:8000/auth/google/callback
           PAYSTACK_SECRET_KEY: test-paystack-key
+          PAYSTACK_PUBLIC_KEY: test-paystack-public-key
           PAYSTACK_WEBHOOK_SECRET: test-webhook-secret
           FRONTEND_URL: http://localhost:3000
           BACKEND_URL: http://localhost:8000
@@ -65,7 +67,9 @@ jobs:
           SECRET_KEY: test-secret-key-for-ci
           GOOGLE_CLIENT_ID: test-client-id
           GOOGLE_CLIENT_SECRET: test-client-secret
+          GOOGLE_REDIRECT_URI: http://localhost:8000/auth/google/callback
           PAYSTACK_SECRET_KEY: test-paystack-key
+          PAYSTACK_PUBLIC_KEY: test-paystack-public-key
           PAYSTACK_WEBHOOK_SECRET: test-webhook-secret
           FRONTEND_URL: http://localhost:3000
           BACKEND_URL: http://localhost:8000

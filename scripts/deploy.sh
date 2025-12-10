@@ -74,7 +74,7 @@ if command -v apt-get &> /dev/null; then
     fi
     
     # Install other essential packages
-    REQUIRED_PACKAGES="curl git build-essential"
+    REQUIRED_PACKAGES="curl git build-essential postgresql-client"
     for pkg in $REQUIRED_PACKAGES; do
         if ! dpkg -l | grep -q "^ii  $pkg "; then
             log_info "Installing $pkg..."

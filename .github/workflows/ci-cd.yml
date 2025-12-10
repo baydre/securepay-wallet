@@ -179,6 +179,26 @@ jobs:
           mkdir -p ~/.ssh
           ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
       
+      - name: Setup GitHub access on server
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+        run: |
+          # Copy the GitHub deploy key to the server
+          ssh $SERVER_USER@$SERVER_HOST "mkdir -p ~/.ssh && chmod 700 ~/.ssh"
+          echo "${{ secrets.GITHUB_DEPLOY_KEY }}" | ssh $SERVER_USER@$SERVER_HOST "cat > ~/.ssh/github_deploy_key && chmod 600 ~/.ssh/github_deploy_key"
+          
+          # Add GitHub to server's known_hosts
+          ssh $SERVER_USER@$SERVER_HOST "ssh-keyscan -H github.com >> ~/.ssh/known_hosts 2>/dev/null"
+          
+          # Configure git to use the deploy key
+          ssh $SERVER_USER@$SERVER_HOST 'echo "Host github.com" > ~/.ssh/config'
+          ssh $SERVER_USER@$SERVER_HOST 'echo "  HostName github.com" >> ~/.ssh/config'
+          ssh $SERVER_USER@$SERVER_HOST 'echo "  User git" >> ~/.ssh/config'
+          ssh $SERVER_USER@$SERVER_HOST 'echo "  IdentityFile ~/.ssh/github_deploy_key" >> ~/.ssh/config'
+          ssh $SERVER_USER@$SERVER_HOST 'echo "  StrictHostKeyChecking no" >> ~/.ssh/config'
+          ssh $SERVER_USER@$SERVER_HOST "chmod 600 ~/.ssh/config"
+      
       - name: Deploy application
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}

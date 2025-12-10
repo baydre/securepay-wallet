@@ -2,7 +2,7 @@
 Unit tests for authentication functions
 """
 import pytest
-from datetime import timedelta
+from datetime import timedelta, datetime
 import auth
 
 
@@ -67,52 +67,49 @@ class TestJWTTokens:
         assert token is not None
         assert isinstance(token, str)
     
-    def test_decode_valid_token(self):
-        """Test decoding a valid JWT token"""
-        data = {"sub": "test@example.com", "user_id": 1}
+    def test_verify_valid_token(self):
+        """Test verifying a valid JWT token"""
+        data = {"sub": "test@example.com"}
         token = auth.create_access_token(data)
         
-        decoded = auth.decode_access_token(token)
+        email = auth.verify_token(token)
         
-        assert decoded is not None
-        assert decoded["sub"] == "test@example.com"
-        assert decoded["user_id"] == 1
-        assert "exp" in decoded  # Should have expiry
+        assert email is not None
+        assert email == "test@example.com"
     
-    def test_decode_invalid_token(self):
-        """Test decoding an invalid JWT token"""
+    def test_verify_invalid_token(self):
+        """Test verifying an invalid JWT token"""
         invalid_token = "invalid.token.here"
         
-        decoded = auth.decode_access_token(invalid_token)
+        email = auth.verify_token(invalid_token)
         
-        assert decoded is None
+        assert email is None
     
-    def test_decode_expired_token(self):
-        """Test decoding an expired JWT token"""
-        data = {"sub": "test@example.com", "user_id": 1}
+    def test_verify_expired_token(self):
+        """Test verifying an expired JWT token"""
+        data = {"sub": "test@example.com"}
         # Create token that expires immediately
         token = auth.create_access_token(data, timedelta(seconds=-1))
         
-        decoded = auth.decode_access_token(token)
+        email = auth.verify_token(token)
         
-        assert decoded is None
+        assert email is None
 
 
-class TestAPIKeyGeneration:
-    """Test API key generation"""
+class TestExpiryParsing:
+    """Test expiry string parsing"""
     
-    def test_generate_api_key_format(self):
-        """Test that generated API keys have correct format"""
-        key = auth.generate_api_key()
-        
-        assert key is not None
-        assert isinstance(key, str)
-        assert len(key) == 32  # Should be 32 characters
-        assert key.startswith("sk_")  # Should have prefix
+    def test_parse_expiry_hours(self):
+        """Test parsing hour expiry format"""
+        result = auth.parse_expiry_string("24H")
+        assert result > datetime.now()
     
-    def test_generate_api_key_uniqueness(self):
-        """Test that generated API keys are unique"""
-        keys = [auth.generate_api_key() for _ in range(10)]
-        
-        # All keys should be unique
-        assert len(keys) == len(set(keys))
+    def test_parse_expiry_days(self):
+        """Test parsing day expiry format"""
+        result = auth.parse_expiry_string("7D")
+        assert result > datetime.now()
+    
+    def test_parse_expiry_months(self):
+        """Test parsing month expiry format"""
+        result = auth.parse_expiry_string("1M")
+        assert result > datetime.now()

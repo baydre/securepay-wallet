@@ -100,8 +100,8 @@ class TestAPIKeyModel:
         
         api_key = models.APIKey(
             user_id=sample_user.id,
-            name="Test Key",
-            key_hash="hashed_key_value",
+            name="Test API Key",
+            hashed_key="hashed_key_value",
             permissions=["read", "deposit"],
             expires_at=datetime.utcnow() + timedelta(days=30)
         )
@@ -109,7 +109,7 @@ class TestAPIKeyModel:
         db_session.commit()
         
         assert api_key.id is not None
-        assert api_key.name == "Test Key"
+        assert api_key.name == "Test API Key"
         assert "read" in api_key.permissions
         assert "deposit" in api_key.permissions
     
@@ -121,7 +121,7 @@ class TestAPIKeyModel:
         expired_key = models.APIKey(
             user_id=sample_user.id,
             name="Expired Key",
-            key_hash="hash1",
+            hashed_key="hash1",
             permissions=["read"],
             expires_at=datetime.utcnow() - timedelta(days=1)
         )
@@ -131,7 +131,7 @@ class TestAPIKeyModel:
         valid_key = models.APIKey(
             user_id=sample_user.id,
             name="Valid Key",
-            key_hash="hash2",
+            hashed_key="hash2",
             permissions=["read"],
             expires_at=datetime.utcnow() + timedelta(days=30)
         )

@@ -56,7 +56,7 @@ def sample_user(db_session):
     user = models.User(
         email="test@example.com",
         google_id="test_google_id_123",
-        name="Test User"
+        full_name="Test User"
     )
     db_session.add(user)
     db_session.commit()
@@ -106,7 +106,7 @@ def sample_api_key(db_session, sample_user):
     api_key = models.APIKey(
         user_id=sample_user.id,
         name="Test API Key",
-        key_hash=hashed_key,
+        hashed_key=hashed_key,
         permissions=["read", "deposit"],
         expires_at=datetime.utcnow() + timedelta(days=30)
     )

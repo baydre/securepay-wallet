@@ -4,6 +4,8 @@
 
 This guide explains how to set up a GitHub deploy key so your server can clone/pull from your private repository during CI/CD deployments.
 
+**Important:** The secret is named `DEPLOY_KEY` (not `GITHUB_DEPLOY_KEY`) because GitHub Actions reserves the `GITHUB_` prefix for its own environment variables. Secret names cannot start with `GITHUB_`.
+
 ## Why Do We Need This?
 
 When the deployment workflow runs:
@@ -56,7 +58,7 @@ ssh-keygen -t ed25519 -C "deploy@securepay-wallet" -f ~/.ssh/github_deploy_key
    - Go to your repository on GitHub
    - Navigate to: `Settings` → `Secrets and variables` → `Actions`
    - Click **New repository secret**
-   - **Name**: `GITHUB_DEPLOY_KEY`
+   - **Name**: `DEPLOY_KEY`
    - **Value**: Paste the entire private key content
    - Click **Add secret**
 
@@ -183,7 +185,7 @@ ssh your-server "chmod 600 ~/.ssh/github_deploy_key ~/.ssh/config"
 
 3. **Remove from GitHub Secrets**:
    - Go to: `Settings` → `Secrets and variables` → `Actions`
-   - Find `GITHUB_DEPLOY_KEY`
+   - Find `DEPLOY_KEY`
    - Click **Remove**
 
 ## Alternative: HTTPS with Token
@@ -209,7 +211,7 @@ The deploy key is automatically configured by this step in `.github/workflows/ci
   run: |
     # Copy deploy key
     ssh $SERVER_USER@$SERVER_HOST "mkdir -p ~/.ssh && chmod 700 ~/.ssh"
-    echo "${{ secrets.GITHUB_DEPLOY_KEY }}" | ssh $SERVER_USER@$SERVER_HOST "cat > ~/.ssh/github_deploy_key && chmod 600 ~/.ssh/github_deploy_key"
+    echo "${{ secrets.DEPLOY_KEY }}" | ssh $SERVER_USER@$SERVER_HOST "cat > ~/.ssh/github_deploy_key && chmod 600 ~/.ssh/github_deploy_key"
     
     # Configure git
     ssh $SERVER_USER@$SERVER_HOST 'echo "Host github.com" > ~/.ssh/config'
@@ -224,7 +226,7 @@ After following this guide, you should have these secrets configured:
 | Secret Name | Description | Example |
 |-------------|-------------|---------|
 | `SSH_PRIVATE_KEY` | Key for accessing your server | `-----BEGIN OPENSSH PRIVATE KEY-----...` |
-| `GITHUB_DEPLOY_KEY` | Key for GitHub access from server | `-----BEGIN OPENSSH PRIVATE KEY-----...` |
+| `DEPLOY_KEY` | Key for GitHub access from server | `-----BEGIN OPENSSH PRIVATE KEY-----...` |
 | `SERVER_HOST` | Your server's hostname/IP | `203.0.113.10` or `api.yourdomain.com` |
 | `SERVER_USER` | SSH username on server | `ubuntu` or `deploy` |
 | `DEPLOY_PATH` | Application directory path | `/opt/securepay-wallet` |
@@ -238,7 +240,7 @@ ssh-keygen -t ed25519 -C "deploy@securepay-wallet" -f ~/.ssh/github_deploy_key
 # View public key (add to GitHub Deploy Keys)
 cat ~/.ssh/github_deploy_key.pub
 
-# View private key (add to GitHub Secrets as GITHUB_DEPLOY_KEY)
+# View private key (add to GitHub Secrets as DEPLOY_KEY)
 cat ~/.ssh/github_deploy_key
 
 # Test from server

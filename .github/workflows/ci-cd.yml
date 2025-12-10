@@ -186,7 +186,7 @@ jobs:
         run: |
           # Copy the GitHub deploy key to the server
           ssh $SERVER_USER@$SERVER_HOST "mkdir -p ~/.ssh && chmod 700 ~/.ssh"
-          echo "${{ secrets.GITHUB_DEPLOY_KEY }}" | ssh $SERVER_USER@$SERVER_HOST "cat > ~/.ssh/github_deploy_key && chmod 600 ~/.ssh/github_deploy_key"
+          echo "${{ secrets.DEPLOY_KEY }}" | ssh $SERVER_USER@$SERVER_HOST "cat > ~/.ssh/github_deploy_key && chmod 600 ~/.ssh/github_deploy_key"
           
           # Add GitHub to server's known_hosts
           ssh $SERVER_USER@$SERVER_HOST "ssh-keyscan -H github.com >> ~/.ssh/known_hosts 2>/dev/null"

@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecurePay Wallet - Auth Test</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        .section {
+            margin: 20px 0;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+        .section h2 {
+            font-size: 18px;
+            color: #333;
+            margin-bottom: 15px;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            width: 100%;
+            transition: all 0.3s;
+            font-weight: 600;
+        }
+        button:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+        .token-display {
+            background: #fff;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            word-break: break-all;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            border: 2px solid #667eea;
+            display: none;
+        }
+        .token-display.show {
+            display: block;
+        }
+        .info {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            border-left: 4px solid #2196f3;
+        }
+        .user-info {
+            background: #e8f5e9;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            border-left: 4px solid #4caf50;
+            display: none;
+        }
+        .user-info.show {
+            display: block;
+        }
+        .user-info p {
+            margin: 8px 0;
+            color: #333;
+        }
+        .user-info strong {
+            color: #2e7d32;
+        }
+        .copy-btn {
+            background: #4caf50;
+            padding: 8px 16px;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+        .copy-btn:hover {
+            background: #45a049;
+        }
+        .error {
+            background: #ffebee;
+            color: #c62828;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            border-left: 4px solid #f44336;
+            display: none;
+        }
+        .error.show {
+            display: block;
+        }
+        .status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 10px;
+        }
+        .status.success {
+            background: #4caf50;
+            color: white;
+        }
+        .status.pending {
+            background: #ff9800;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 SecurePay Wallet</h1>
+        <p class="subtitle">OAuth Testing Interface</p>
+
+        <div class="section">
+            <h2>Step 1: Authenticate with Google</h2>
+            <button onclick="loginWithGoogle()">
+                Sign in with Google
+            </button>
+            <div class="info">
+                <strong>ℹ️ What happens:</strong><br>
+                • You'll be redirected to Google<br>
+                • Grant permissions to the app<br>
+                • Get redirected back with your token<br>
+                • Your wallet will be created automatically
+            </div>
+        </div>
+
+        <div class="error" id="error"></div>
+
+        <div class="token-display" id="tokenDisplay">
+            <strong>🎫 Your JWT Token:</strong>
+            <div id="tokenValue" style="margin-top: 10px;"></div>
+            <button class="copy-btn" onclick="copyToken()">Copy Token</button>
+        </div>
+
+        <div class="user-info" id="userInfo"></div>
+
+        <div class="section">
+            <h2>Step 2: Test Your Token</h2>
+            <button onclick="testToken()" id="testBtn" disabled>
+                Test Token
+            </button>
+        </div>
+
+        <div class="section">
+            <h2>Step 3: Explore API</h2>
+            <button onclick="window.open('http://localhost:8000/docs', '_blank')">
+                Open API Documentation
+            </button>
+        </div>
+    </div>
+
+    <script>
+        let accessToken = null;
+
+        function loginWithGoogle() {
+            window.location.href = 'http://localhost:8000/auth/google';
+        }
+
+        function parseURLParams() {
+            const params = new URLSearchParams(window.location.search);
+            const token = params.get('token');
+            
+            if (token) {
+                accessToken = token;
+                document.getElementById('tokenValue').textContent = token;
+                document.getElementById('tokenDisplay').classList.add('show');
+                document.getElementById('testBtn').disabled = false;
+                
+                // Clean URL
+                window.history.replaceState({}, document.title, window.location.pathname);
+                
+                // Auto-test the token
+                testToken();
+            }
+        }
+
+        async function testToken() {
+            if (!accessToken) {
+                showError('No token found. Please login first.');
+                return;
+            }
+
+            try {
+                const response = await fetch('http://localhost:8000/auth/me', {
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Token validation failed');
+                }
+
+                const data = await response.json();
+                displayUserInfo(data);
+                hideError();
+            } catch (error) {
+                showError('Failed to validate token: ' + error.message);
+            }
+        }
+
+        function displayUserInfo(data) {
+            const userInfoDiv = document.getElementById('userInfo');
+            userInfoDiv.innerHTML = `
+                <strong>✅ Authentication Successful!</strong>
+                <p><strong>Email:</strong> ${data.email}</p>
+                <p><strong>Name:</strong> ${data.full_name || 'Not provided'}</p>
+                ${data.wallet ? `
+                    <p><strong>Wallet Number:</strong> ${data.wallet.wallet_number}</p>
+                    <p><strong>Balance:</strong> ₦${data.wallet.balance.toFixed(2)}</p>
+                ` : '<p><strong>Wallet:</strong> Not created yet</p>'}
+                <p style="margin-top: 15px; font-size: 12px; color: #666;">
+                    You can now use this token in the API documentation or Postman
+                </p>
+            `;
+            userInfoDiv.classList.add('show');
+        }
+
+        function copyToken() {
+            navigator.clipboard.writeText(accessToken).then(() => {
+                const btn = event.target;
+                const originalText = btn.textContent;
+                btn.textContent = '✓ Copied!';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                }, 2000);
+            });
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('error');
+            errorDiv.textContent = message;
+            errorDiv.classList.add('show');
+        }
+
+        function hideError() {
+            document.getElementById('error').classList.remove('show');
+        }
+
+        // Check for token on page load
+        window.onload = parseURLParams;
+    </script>
+</body>
+</html>

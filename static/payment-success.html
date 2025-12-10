@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment Status - SecurePay Wallet</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 500px;
+            width: 100%;
+            padding: 40px;
+            text-align: center;
+        }
+        
+        .status-icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 20px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+        }
+        
+        .status-icon.checking {
+            background: #fbbf24;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        
+        .status-icon.success {
+            background: #10b981;
+        }
+        
+        .status-icon.pending {
+            background: #f59e0b;
+        }
+        
+        .status-icon.failed {
+            background: #ef4444;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.8; }
+        }
+        
+        h1 {
+            color: #1f2937;
+            margin-bottom: 10px;
+            font-size: 24px;
+        }
+        
+        .reference {
+            color: #6b7280;
+            font-size: 14px;
+            margin-bottom: 20px;
+            font-family: monospace;
+        }
+        
+        .status-message {
+            color: #4b5563;
+            line-height: 1.6;
+            margin-bottom: 30px;
+        }
+        
+        .details {
+            background: #f9fafb;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            text-align: left;
+        }
+        
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        .detail-row:last-child {
+            border-bottom: none;
+        }
+        
+        .detail-label {
+            color: #6b7280;
+            font-size: 14px;
+        }
+        
+        .detail-value {
+            color: #1f2937;
+            font-weight: 600;
+        }
+        
+        .btn {
+            display: inline-block;
+            padding: 12px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: transform 0.2s;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+        
+        .btn-secondary {
+            background: #e5e7eb;
+            color: #1f2937;
+            margin-left: 10px;
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f4f6;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="status-icon checking" id="statusIcon">
+            <div class="loading"></div>
+        </div>
+        
+        <h1 id="statusTitle">Checking Payment Status...</h1>
+        <div class="reference" id="reference"></div>
+        <div class="status-message" id="statusMessage">
+            Please wait while we verify your payment with Paystack.
+        </div>
+        
+        <div class="details" id="details" style="display: none;">
+            <div class="detail-row">
+                <span class="detail-label">Amount</span>
+                <span class="detail-value" id="amount">-</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Status</span>
+                <span class="detail-value" id="status">-</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Type</span>
+                <span class="detail-value" id="type">-</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Date</span>
+                <span class="detail-value" id="date">-</span>
+            </div>
+        </div>
+        
+        <div id="actions" style="display: none;">
+            <a href="/docs" class="btn">View API Docs</a>
+            <a href="/static/auth-test.html" class="btn btn-secondary">New Transaction</a>
+        </div>
+    </div>
+    
+    <script>
+        // Get reference from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const reference = urlParams.get('reference') || urlParams.get('trxref');
+        
+        if (!reference) {
+            document.getElementById('statusTitle').textContent = 'Error';
+            document.getElementById('statusMessage').textContent = 'No transaction reference provided.';
+            document.getElementById('statusIcon').className = 'status-icon failed';
+            document.getElementById('statusIcon').textContent = '❌';
+            document.getElementById('actions').style.display = 'block';
+        } else {
+            document.getElementById('reference').textContent = `Reference: ${reference}`;
+            checkPaymentStatus(reference);
+        }
+        
+        async function checkPaymentStatus(reference) {
+            try {
+                // Wait a bit for webhook to process
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                const response = await fetch(`/wallet/deposit/${reference}/status`, {
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to check status');
+                }
+                
+                const data = await response.json();
+                displayStatus(data);
+            } catch (error) {
+                document.getElementById('statusTitle').textContent = 'Status Check Failed';
+                document.getElementById('statusMessage').textContent = 
+                    'Unable to verify payment status. Please check your wallet balance or contact support.';
+                document.getElementById('statusIcon').className = 'status-icon failed';
+                document.getElementById('statusIcon').textContent = '⚠️';
+                document.getElementById('actions').style.display = 'block';
+            }
+        }
+        
+        function displayStatus(data) {
+            const iconElement = document.getElementById('statusIcon');
+            const titleElement = document.getElementById('statusTitle');
+            const messageElement = document.getElementById('statusMessage');
+            const detailsElement = document.getElementById('details');
+            const actionsElement = document.getElementById('actions');
+            
+            // Update icon and title based on status
+            if (data.status === 'success') {
+                iconElement.className = 'status-icon success';
+                iconElement.textContent = '✅';
+                titleElement.textContent = 'Payment Successful!';
+                messageElement.textContent = 
+                    'Your wallet has been credited successfully. The funds are now available in your account.';
+            } else if (data.status === 'pending') {
+                iconElement.className = 'status-icon pending';
+                iconElement.textContent = '⏳';
+                titleElement.textContent = 'Payment Pending';
+                messageElement.textContent = 
+                    'Your payment is being processed. This may take a few moments. Please refresh to check status.';
+            } else {
+                iconElement.className = 'status-icon failed';
+                iconElement.textContent = '❌';
+                titleElement.textContent = 'Payment Failed';
+                messageElement.textContent = 
+                    'Your payment could not be processed. Your account has not been charged.';
+            }
+            
+            // Show details
+            document.getElementById('amount').textContent = `₦${data.amount.toFixed(2)}`;
+            document.getElementById('status').textContent = data.status.toUpperCase();
+            document.getElementById('type').textContent = data.type.toUpperCase();
+            document.getElementById('date').textContent = new Date(data.created_at).toLocaleString();
+            
+            detailsElement.style.display = 'block';
+            actionsElement.style.display = 'block';
+        }
+    </script>
+</body>
+</html>

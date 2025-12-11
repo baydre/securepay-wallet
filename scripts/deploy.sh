@@ -417,45 +417,13 @@ NGINX_CONF="/etc/nginx/sites-available/$APP_NAME"
 NGINX_ENABLED="/etc/nginx/sites-enabled/$APP_NAME"
 
 if [ "$USE_SSL" = true ]; then
-    # Configuration with SSL (will be updated after certbot)
+    # Start with HTTP-only config, certbot will add SSL later
+    log_info "Creating initial HTTP configuration (SSL will be added by certbot)..."
     sudo tee "$NGINX_CONF" > /dev/null <<EOF
-# HTTP - Redirect to HTTPS
+# HTTP - Will be configured for HTTPS by certbot
 server {
     listen 80;
     server_name $DOMAIN;
-    
-    # Let's Encrypt challenge location
-    location /.well-known/acme-challenge/ {
-        root /var/www/html;
-    }
-    
-    # Redirect all other traffic to HTTPS
-    location / {
-        return 301 https://\$host\$request_uri;
-    }
-}
-
-# HTTPS - Main application
-server {
-    listen 443 ssl http2;
-    server_name $DOMAIN;
-    
-    # SSL certificates (will be configured by certbot)
-    ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
-    
-    # SSL configuration
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers HIGH:!aNULL:!MD5;
-    ssl_prefer_server_ciphers on;
-    ssl_session_cache shared:SSL:10m;
-    ssl_session_timeout 10m;
-    
-    # Security headers
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
     
     # Client body size
     client_max_body_size 10M;
@@ -486,7 +454,6 @@ server {
     location /static {
         alias $APP_DIR/static;
         expires 30d;
-        add_header Cache-Control "public, immutable";
     }
 }
 EOF
@@ -562,7 +529,7 @@ if [ "$USE_SSL" = true ]; then
     
     # Check if certbot is installed
     if ! command -v certbot &> /dev/null; then
-        log_warning "Certbot not installed. Installing..."
+        log_info "Installing certbot..."
         sudo apt update -qq
         sudo apt install -y certbot python3-certbot-nginx
         log_success "Certbot installed"
@@ -572,19 +539,40 @@ if [ "$USE_SSL" = true ]; then
     if [ -d "/etc/letsencrypt/live/$DOMAIN" ]; then
         log_info "SSL certificate already exists for $DOMAIN"
         log_info "Certificate will auto-renew via systemd timer"
+        log_success "SSL is already configured"
     else
         log_info "Obtaining SSL certificate for $DOMAIN..."
-        log_warning "Make sure:"
-        log_warning "  1. Domain $DOMAIN points to this server's IP"
-        log_warning "  2. Ports 80 and 443 are open in firewall"
+        log_warning "Prerequisites:"
+        log_warning "  1. Domain $DOMAIN must point to this server's IP"
+        log_warning "  2. Ports 80 and 443 must be open in firewall"
+        log_warning "  3. Nginx must be running and accessible on port 80"
         
-        # Attempt to obtain certificate
-        if sudo certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --email "admin@$DOMAIN" --redirect; then
-            log_success "SSL certificate obtained successfully!"
-        else
-            log_error "Failed to obtain SSL certificate"
-            log_warning "Falling back to HTTP only"
-            log_info "To retry later, run: sudo certbot --nginx -d $DOMAIN"
+        # Ensure Nginx is running before certbot attempts validation
+        if ! systemctl is-active --quiet nginx; then
+            log_warning "Nginx is not running, starting it now..."
+            sudo systemctl start nginx || {
+                log_error "Failed to start Nginx"
+                log_warning "Skipping SSL configuration - fix Nginx first"
+                USE_SSL=false
+            }
+        fi
+        
+        if [ "$USE_SSL" = true ]; then
+            # Attempt to obtain certificate (certbot will modify nginx config)
+            if sudo certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --email "admin@$DOMAIN" --redirect 2>&1 | tee /tmp/certbot.log; then
+                log_success "SSL certificate obtained successfully!"
+                log_success "Certbot has configured Nginx for HTTPS"
+            else
+                log_error "Failed to obtain SSL certificate"
+                log_error "Certbot output:"
+                cat /tmp/certbot.log | tail -20
+                log_warning "Common causes:"
+                log_warning "  - Domain doesn't point to this server"
+                log_warning "  - Firewall blocking ports 80/443"
+                log_warning "  - DNS not propagated yet"
+                log_info "Continuing with HTTP only"
+                log_info "To retry later, run: sudo certbot --nginx -d $DOMAIN"
+            fi
         fi
     fi
     

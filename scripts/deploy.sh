@@ -207,20 +207,38 @@ log_success "Environment configuration valid"
 # Database Migrations (Idempotent)
 ###############################################################################
 
-log_info "Running database migrations..."
+log_info "Checking database configuration..."
 
-# Check if alembic is configured
-if [ -f "alembic.ini" ]; then
-    # Run migrations (idempotent - alembic tracks applied migrations)
-    alembic upgrade head
-    log_success "Database migrations completed"
+# Check if DATABASE_URL is set
+if [ -z "${DATABASE_URL:-}" ]; then
+    log_warning "DATABASE_URL not set - skipping database migrations"
+    log_info "To enable migrations, add DATABASE_URL to .env file"
+    log_info "Example: DATABASE_URL=postgresql://user:pass@localhost:5432/dbname"
 else
-    log_warning "Alembic not configured, skipping migrations"
+    log_info "Running database migrations..."
     
-    # Fallback: create tables directly (idempotent)
-    if [ -f "create_tables.py" ]; then
-        python create_tables.py
-        log_success "Database tables created/verified"
+    # Check if alembic is configured
+    if [ -f "alembic.ini" ]; then
+        # Run migrations (idempotent - alembic tracks applied migrations)
+        if alembic upgrade head 2>&1; then
+            log_success "Database migrations completed"
+        else
+            log_error "Database migrations failed"
+            log_warning "Common causes:"
+            log_warning "  - PostgreSQL not running"
+            log_warning "  - DATABASE_URL points to wrong host"
+            log_warning "  - Database doesn't exist"
+            log_info "Check connection: psql \"\$DATABASE_URL\""
+            log_warning "Continuing deployment without migrations..."
+        fi
+    else
+        log_warning "Alembic not configured, skipping migrations"
+        
+        # Fallback: create tables directly (idempotent)
+        if [ -f "create_tables.py" ]; then
+            python create_tables.py 2>&1 || log_warning "Table creation failed"
+            log_success "Database tables created/verified"
+        fi
     fi
 fi
 

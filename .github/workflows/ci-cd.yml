@@ -368,8 +368,8 @@ jobs:
             
             echo "✅ Service is active"
             
-            # Check if port 8000 is listening using improved pattern matching
-            if ss -tlnp | grep -E "(0\.0\.0\.0:8000|127\.0\.0\.1:8000|\[::\]:8000).*LISTEN" > /dev/null; then
+            # Check if port 8000 is listening using correct ss output format
+            if ss -tlnp | grep -E "LISTEN.*:8000\s" > /dev/null; then
               echo "✅ Port 8000 is listening"
             else
               echo "❌ Port 8000 is not listening"

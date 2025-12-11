@@ -203,6 +203,13 @@ fi
 
 log_success "Environment configuration valid"
 
+# Load environment variables from .env
+log_info "Loading environment variables..."
+set -a  # automatically export all variables
+source .env
+set +a  # disable auto-export
+log_success "Environment variables loaded"
+
 ###############################################################################
 # Database Migrations (Idempotent)
 ###############################################################################
@@ -266,38 +273,70 @@ log_info "Configuring systemd service..."
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 
 if [ -f "$SERVICE_FILE" ]; then
-    log_info "Service file already exists"
-else
-    log_warning "Service file not found. Creating..."
-    
-    # Create service file (requires sudo)
-    sudo tee "$SERVICE_FILE" > /dev/null <<EOF
+    log_info "Service file already exists - updating configuration..."
+    # Force update to apply fixes
+    sudo rm -f "$SERVICE_FILE"
+fi
+
+log_info "Creating systemd service file..."
+
+# Create service file (requires sudo)
+sudo tee "$SERVICE_FILE" > /dev/null <<EOF
 [Unit]
 Description=SecurePay Wallet API
-After=network.target
+After=network.target postgresql.service
 Wants=postgresql.service
 
 [Service]
-Type=simple
+# Use 'exec' type - systemd waits for process to exec()
+Type=exec
+
+# Increase startup timeout to 90 seconds
+TimeoutStartSec=90
+TimeoutStopSec=30
+
 User=${DEPLOY_USER:-$USER}
 WorkingDirectory=$APP_DIR
+
+# Load environment variables
 EnvironmentFile=$APP_DIR/.env
 Environment="PATH=$VENV_DIR/bin:/usr/local/bin:/usr/bin:/bin"
-ExecStart=$VENV_DIR/bin/uvicorn main:app --host 0.0.0.0 --port 8000
+
+# Pre-start validation
+ExecStartPre=/bin/sh -c 'test -f $APP_DIR/main.py || exit 1'
+ExecStartPre=/bin/sh -c 'test -f $VENV_DIR/bin/uvicorn || exit 1'
+
+# Main command - start uvicorn
+ExecStart=$VENV_DIR/bin/uvicorn main:app \\
+    --host 0.0.0.0 \\
+    --port 8000 \\
+    --log-level info \\
+    --no-access-log
+
+# Graceful reload
 ExecReload=/bin/kill -s HUP \$MAINPID
-Restart=on-failure
+
+# Restart policy
+Restart=always
 RestartSec=5s
+StartLimitBurst=5
+StartLimitIntervalSec=60s
+
+# Logging
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=securepay-wallet
 
+# Security (optional but recommended)
+NoNewPrivileges=true
+PrivateTmp=true
+
 [Install]
 WantedBy=multi-user.target
 EOF
-    
-    sudo systemctl daemon-reload
-    log_success "Service file created"
-fi
+
+sudo systemctl daemon-reload
+log_success "Service file created and configured"
 
 # Enable service (idempotent)
 sudo systemctl enable "$SERVICE_NAME" 2>/dev/null || true

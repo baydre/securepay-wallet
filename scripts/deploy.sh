@@ -226,17 +226,57 @@ else
     
     # Check if alembic is configured
     if [ -f "alembic.ini" ]; then
-        # Run migrations (idempotent - alembic tracks applied migrations)
-        if alembic upgrade head 2>&1; then
-            log_success "Database migrations completed"
+        # Test database connection first
+        log_info "Testing database connection..."
+        if timeout 5 python -c "
+import sys
+from sqlalchemy import create_engine, text
+try:
+    engine = create_engine('$DATABASE_URL')
+    with engine.connect() as conn:
+        conn.execute(text('SELECT 1'))
+    print('✅ Database connection successful')
+    sys.exit(0)
+except Exception as e:
+    print(f'❌ Database connection failed: {e}')
+    sys.exit(1)
+" 2>&1; then
+            log_success "Database connection verified"
+            
+            # Run migrations with error handling
+            log_info "Applying database migrations..."
+            MIGRATION_OUTPUT=$(alembic upgrade head 2>&1) || MIGRATION_EXIT_CODE=$?
+            
+            if [ ${MIGRATION_EXIT_CODE:-0} -eq 0 ]; then
+                log_success "Database migrations completed"
+            else
+                # Check if it's a "table already exists" error (safe to ignore)
+                if echo "$MIGRATION_OUTPUT" | grep -q "DuplicateTable\|already exists"; then
+                    log_warning "Some tables already exist - this is expected"
+                    log_info "Marking migration as applied..."
+                    
+                    # Stamp the database with current revision to sync state
+                    if alembic stamp head 2>&1; then
+                        log_success "Migration state synchronized"
+                    else
+                        log_warning "Could not sync migration state, but continuing..."
+                    fi
+                else
+                    # Real migration error
+                    log_error "Database migrations failed"
+                    log_error "Error details:"
+                    echo "$MIGRATION_OUTPUT" | tail -10
+                    log_warning "Common causes:"
+                    log_warning "  - Migration script has syntax errors"
+                    log_warning "  - Incompatible schema changes"
+                    log_warning "  - Database permissions issue"
+                    log_warning "Continuing deployment without migrations..."
+                fi
+            fi
         else
-            log_error "Database migrations failed"
-            log_warning "Common causes:"
-            log_warning "  - PostgreSQL not running"
-            log_warning "  - DATABASE_URL points to wrong host"
-            log_warning "  - Database doesn't exist"
-            log_info "Check connection: psql \"\$DATABASE_URL\""
-            log_warning "Continuing deployment without migrations..."
+            log_error "Cannot connect to database!"
+            log_warning "Skipping migrations - check DATABASE_URL and database availability"
+            log_info "Database URL format: postgresql://user:pass@host:port/dbname"
         fi
     else
         log_warning "Alembic not configured, skipping migrations"

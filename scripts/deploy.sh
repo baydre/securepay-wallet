@@ -337,7 +337,7 @@ Type=exec
 
 # Increase startup timeout to 90 seconds
 TimeoutStartSec=90
-TimeoutStopSec=30
+TimeoutStopSec=10
 
 User=${DEPLOY_USER:-$USER}
 WorkingDirectory=$APP_DIR
@@ -357,8 +357,11 @@ ExecStart=$VENV_DIR/bin/uvicorn main:app \\
     --log-level info \\
     --no-access-log
 
-# Graceful reload
-ExecReload=/bin/kill -s HUP \$MAINPID
+# DO NOT USE RELOAD WITH UVICORN - it doesn't support it
+ExecReload=/bin/true
+
+# Proper signal handling for Uvicorn
+KillSignal=SIGQUIT
 
 # Restart policy
 Restart=always
@@ -602,13 +605,13 @@ fi
 
 log_info "Restarting application..."
 
-# Try reload first (graceful), then restart
-if sudo systemctl reload "$SERVICE_NAME" 2>/dev/null; then
-    log_success "Service reloaded gracefully"
+# Use restart instead of reload - Uvicorn doesn't support reload
+if sudo systemctl restart "$SERVICE_NAME" 2>/dev/null; then
+    log_success "Service restarted successfully"
 else
-    log_info "Reload not supported, performing restart..."
-    sudo systemctl restart "$SERVICE_NAME"
-    log_success "Service restarted"
+    log_error "Service restart failed"
+    sudo journalctl -u "$SERVICE_NAME" -n 10 --no-pager
+    exit 1
 fi
 
 ###############################################################################

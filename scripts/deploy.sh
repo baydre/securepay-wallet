@@ -327,6 +327,10 @@ Description=SecurePay Wallet API
 After=network.target postgresql.service
 Wants=postgresql.service
 
+# Rate limiting for restarts
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
 [Service]
 # Use 'exec' type - systemd waits for process to exec()
 Type=exec
@@ -359,8 +363,6 @@ ExecReload=/bin/kill -s HUP \$MAINPID
 # Restart policy
 Restart=always
 RestartSec=5s
-StartLimitBurst=5
-StartLimitIntervalSec=60s
 
 # Logging
 StandardOutput=journal

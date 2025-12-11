@@ -277,6 +277,7 @@ jobs:
             
             # Run idempotent deployment script (creates systemd unit if needed)
             echo "Running deployment script..."
+            export DOMAIN="${{ secrets.DOMAIN }}"
             bash scripts/deploy.sh
           ENDSSH
           ENDSSH

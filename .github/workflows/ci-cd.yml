@@ -292,20 +292,108 @@ jobs:
             
             # Check if systemd unit exists
             if systemctl list-unit-files | grep -q '^securepay-wallet.service'; then
-              echo "🔄 Restarting securepay-wallet service..."
-              sudo systemctl reload securepay-wallet || sudo systemctl restart securepay-wallet
+              echo "🔄 Checking service status..."
+              
+              # Check if service is already running and healthy
+              if systemctl is-active --quiet securepay-wallet; then
+                echo "✅ Service is already running"
+                
+                # Test if it's responding
+                if curl -f --max-time 5 http://localhost:8000/health &> /dev/null; then
+                  echo "✅ Service is healthy - no restart needed"
+                  echo "Current process info:"
+                  sudo systemctl status securepay-wallet --no-pager -l | head -10
+                else
+                  echo "⚠️ Service running but not responding - restarting..."
+                  sudo systemctl restart securepay-wallet
+                  
+                  # Wait for restart to complete
+                  echo "⏳ Waiting for service to restart..."
+                  for i in {1..30}; do
+                    if systemctl is-active --quiet securepay-wallet; then
+                      echo "✅ Service restarted after ${i}s"
+                      break
+                    fi
+                    sleep 1
+                    if [ $i -eq 30 ]; then
+                      echo "❌ Service failed to restart within 30s"
+                      sudo systemctl status securepay-wallet --no-pager -l
+                      exit 1
+                    fi
+                  done
+                fi
+              else
+                echo "🚀 Starting service..."
+                sudo systemctl start securepay-wallet
+                
+                # Wait for startup
+                echo "⏳ Waiting for service to start..."
+                for i in {1..30}; do
+                  if systemctl is-active --quiet securepay-wallet; then
+                    echo "✅ Service started after ${i}s"
+                    break
+                  fi
+                  sleep 1
+                  if [ $i -eq 30 ]; then
+                    echo "❌ Service failed to start within 30s"
+                    sudo systemctl status securepay-wallet --no-pager -l
+                    exit 1
+                  fi
+                done
+              fi
             else
               echo "❌ ERROR: securepay-wallet.service not found in systemd"
               echo "Check that scripts/deploy.sh creates /etc/systemd/system/securepay-wallet.service"
-              echo "The service must be installed and enabled before restart can succeed"
               exit 5
             fi
-            
-            # Health check
-            echo "🏥 Running health check..."
+          ENDSSH
+      
+      - name: Health check
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+        run: |
+          ssh $SERVER_USER@$SERVER_HOST << 'ENDSSH'
+            # Wait a moment for service to fully initialize
             sleep 5
-            curl -f http://localhost:8000/health || exit 1
-            echo "✅ Service is healthy"
+            
+            echo "🏥 Running comprehensive health check..."
+            
+            # Check service status
+            if ! systemctl is-active --quiet securepay-wallet; then
+              echo "❌ Service is not active"
+              sudo systemctl status securepay-wallet --no-pager -l
+              exit 1
+            fi
+            
+            echo "✅ Service is active"
+            
+            # Check if port is listening
+            if ! sudo netstat -tlnp | grep -q ':8000.*LISTEN'; then
+              echo "❌ Port 8000 is not listening"
+              sudo netstat -tlnp | grep 8000 || echo "No processes on port 8000"
+              exit 1
+            fi
+            
+            echo "✅ Port 8000 is listening"
+            
+            # Check HTTP response with retry
+            echo "🔍 Testing HTTP endpoint..."
+            for i in {1..10}; do
+              if curl -f --max-time 10 http://localhost:8000/health; then
+                echo ""
+                echo "✅ Health check passed!"
+                exit 0
+              fi
+              
+              echo "Attempt $i failed, retrying in 3s..."
+              sleep 3
+            done
+            
+            echo "❌ Health check failed after 10 attempts"
+            echo "Service logs:"
+            sudo journalctl -u securepay-wallet -n 20 --no-pager
+            exit 1
           ENDSSH
       
       - name: Notify deployment success

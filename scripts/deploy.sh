@@ -146,9 +146,6 @@ else
     log_info "Virtual environment already exists"
 fi
 
-# Activate virtual environment
-source "$VENV_DIR/bin/activate"
-
 log_success "Python environment ready"
 
 ###############################################################################
@@ -157,9 +154,12 @@ log_success "Python environment ready"
 
 log_info "Installing/updating dependencies..."
 
-# Install requirements using uv (idempotent and much faster than pip)
-uv pip install -r requirements.txt
+# Install/sync dependencies using uv (reads from uv.lock for reproducibility)
+uv sync --frozen
 log_success "Dependencies installed"
+
+# Activate virtual environment after sync
+source "$VENV_DIR/bin/activate"
 
 ###############################################################################
 # Environment Configuration Check (Idempotent)

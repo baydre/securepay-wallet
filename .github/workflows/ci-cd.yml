@@ -239,18 +239,15 @@ jobs:
             
             echo "Code deployed successfully"
             
-            # Create virtual environment using uv (faster and more reliable)
+            # Create virtual environment and install dependencies using uv
             echo "Setting up Python environment with uv..."
             if [ ! -d .venv ]; then
-              uv venv .venv
-              echo "Virtual environment created"
+              echo "Creating virtual environment and installing dependencies..."
+              uv sync --frozen
             else
-              echo "Virtual environment already exists"
+              echo "Syncing dependencies with uv.lock..."
+              uv sync --frozen
             fi
-            
-            # Install dependencies using uv (no need to activate venv, uv handles it)
-            echo "Installing dependencies..."
-            uv pip install -r requirements.txt
             
             # Ensure scripts are executable
             chmod +x scripts/deploy.sh
@@ -324,8 +321,7 @@ jobs:
             if [ -d .git ]; then
               echo "Rolling back using git..."
               git reset --hard HEAD~1
-              source .venv/bin/activate
-              uv pip install -r requirements.txt
+              uv sync --frozen
               sudo systemctl restart securepay-wallet || true
               echo "Rollback complete"
             else

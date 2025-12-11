@@ -368,8 +368,10 @@ jobs:
             
             echo "✅ Service is active"
             
-            # Check if port is listening using ss (modern replacement for netstat)
-            if ! ss -tlnp | grep -q ':8000.*LISTEN'; then
+            # Check if port 8000 is listening using improved pattern matching
+            if ss -tlnp | grep -E "(0\.0\.0\.0:8000|127\.0\.0\.1:8000|\[::\]:8000).*LISTEN" > /dev/null; then
+              echo "✅ Port 8000 is listening"
+            else
               echo "❌ Port 8000 is not listening"
               echo "Current listening ports:"
               ss -tlnp | grep LISTEN || echo "No listening ports found"
@@ -377,8 +379,6 @@ jobs:
               ss -tlnp | grep 8000 || echo "No processes found on port 8000"
               exit 1
             fi
-            
-            echo "✅ Port 8000 is listening"
             
             # Check HTTP response with retry
             echo "🔍 Testing HTTP endpoint..."

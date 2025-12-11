@@ -37,7 +37,7 @@ log_error() {
 # Configuration
 APP_NAME="securepay-wallet"
 APP_DIR="${DEPLOY_PATH:-/opt/securepay-wallet}"
-VENV_DIR="$APP_DIR/venv"
+VENV_DIR="$APP_DIR/.venv"
 SERVICE_NAME="securepay-wallet"
 BACKUP_DIR="$APP_DIR/backups"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
@@ -130,9 +130,17 @@ log_success "Backup completed"
 
 log_info "Setting up Python virtual environment..."
 
-# Create venv if it doesn't exist
+# Install uv if not present (faster than pip)
+if ! command -v uv &> /dev/null; then
+    log_info "Installing uv..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    export PATH="$HOME/.cargo/bin:$PATH"
+fi
+
+# Create venv using uv if it doesn't exist
 if [ ! -d "$VENV_DIR" ]; then
-    python3 -m venv "$VENV_DIR"
+    log_info "Creating virtual environment with uv..."
+    uv venv "$VENV_DIR"
     log_success "Created virtual environment"
 else
     log_info "Virtual environment already exists"
@@ -140,13 +148,6 @@ fi
 
 # Activate virtual environment
 source "$VENV_DIR/bin/activate"
-
-# Install uv if not present (faster than pip)
-if ! command -v uv &> /dev/null; then
-    log_info "Installing uv..."
-    curl -LsSf https://astral.sh/uv/install.sh | sh
-    export PATH="$HOME/.cargo/bin:$PATH"
-fi
 
 log_success "Python environment ready"
 

@@ -211,7 +211,14 @@ jobs:
             # Install system dependencies first
             echo "Installing system dependencies..."
             sudo apt-get update -qq
-            sudo apt-get install -y python3-venv python3-pip curl git build-essential postgresql-client
+            sudo apt-get install -y python3 python3-pip curl git build-essential postgresql-client
+            
+            # Install uv (fast Python package installer)
+            if ! command -v uv &> /dev/null; then
+              echo "Installing uv..."
+              curl -LsSf https://astral.sh/uv/install.sh | sh
+              export PATH="$HOME/.cargo/bin:$PATH"
+            fi
             
             # Ensure deploy directory exists
             mkdir -p "${{ secrets.DEPLOY_PATH }}"
@@ -232,16 +239,17 @@ jobs:
             
             echo "Code deployed successfully"
             
-            # Create or activate virtualenv
-            if [ ! -d venv ]; then
-              echo "Creating new virtual environment..."
-              python3 -m venv venv
+            # Create virtual environment using uv (faster and more reliable)
+            echo "Setting up Python environment with uv..."
+            if [ ! -d .venv ]; then
+              uv venv .venv
+              echo "Virtual environment created"
+            else
+              echo "Virtual environment already exists"
             fi
-            source venv/bin/activate
             
-            # Install/update dependencies
-            echo "Installing dependencies with uv..."
-            pip install uv
+            # Install dependencies using uv (no need to activate venv, uv handles it)
+            echo "Installing dependencies..."
             uv pip install -r requirements.txt
             
             # Ensure scripts are executable
@@ -262,7 +270,7 @@ jobs:
           ssh $SERVER_USER@$SERVER_HOST << 'ENDSSH'
             set -e
             cd ${{ secrets.DEPLOY_PATH }}
-            source venv/bin/activate
+            source .venv/bin/activate
             
             # Run Alembic migrations idempotently
             alembic upgrade head
@@ -316,7 +324,7 @@ jobs:
             if [ -d .git ]; then
               echo "Rolling back using git..."
               git reset --hard HEAD~1
-              source venv/bin/activate
+              source .venv/bin/activate
               uv pip install -r requirements.txt
               sudo systemctl restart securepay-wallet || true
               echo "Rollback complete"

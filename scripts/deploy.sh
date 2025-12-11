@@ -274,17 +274,22 @@ else
     sudo tee "$SERVICE_FILE" > /dev/null <<EOF
 [Unit]
 Description=SecurePay Wallet API
-After=network.target postgresql.service
+After=network.target
+Wants=postgresql.service
 
 [Service]
-Type=notify
+Type=simple
 User=${DEPLOY_USER:-$USER}
 WorkingDirectory=$APP_DIR
-Environment="PATH=$VENV_DIR/bin"
+EnvironmentFile=$APP_DIR/.env
+Environment="PATH=$VENV_DIR/bin:/usr/local/bin:/usr/bin:/bin"
 ExecStart=$VENV_DIR/bin/uvicorn main:app --host 0.0.0.0 --port 8000
 ExecReload=/bin/kill -s HUP \$MAINPID
 Restart=on-failure
 RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=securepay-wallet
 
 [Install]
 WantedBy=multi-user.target

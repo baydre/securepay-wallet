@@ -279,47 +279,7 @@ jobs:
             echo "Running deployment script..."
             export DOMAIN="${{ secrets.DOMAIN }}"
             bash scripts/deploy.sh
-          ENDSSH
-          ENDSSH
-      
-      - name: Run database migrations
-        env:
-          SERVER_HOST: ${{ secrets.SERVER_HOST }}
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-        run: |
-          ssh $SERVER_USER@$SERVER_HOST << 'ENDSSH'
-            cd ${{ secrets.DEPLOY_PATH }}
-            
-            # Check if .env file exists and has DATABASE_URL
-            if [ ! -f .env ]; then
-              echo "⚠️ .env file not found - skipping database migrations"
-              echo "Create .env file on server with DATABASE_URL to enable migrations"
-              exit 0
-            fi
-            
-            # Source .env to get DATABASE_URL
-            export $(grep -v '^#' .env | xargs)
-            
-            if [ -z "$DATABASE_URL" ]; then
-              echo "⚠️ DATABASE_URL not set in .env - skipping database migrations"
-              echo "Add DATABASE_URL to .env file to enable migrations"
-              exit 0
-            fi
-            
-            # Activate venv and run migrations
-            echo "Running database migrations..."
-            source .venv/bin/activate
-            alembic upgrade head || {
-              echo "⚠️ Database migrations failed"
-              echo "Common causes:"
-              echo "  - PostgreSQL not running"
-              echo "  - DATABASE_URL points to wrong host"
-              echo "  - Database doesn't exist"
-              echo "Check: psql \"\$DATABASE_URL\""
-              exit 1
-            }
-            echo "✅ Database migrations completed"
+            echo "✅ Deployment complete!"
           ENDSSH
       
       - name: Restart application

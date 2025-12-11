@@ -227,27 +227,50 @@ jobs:
             # Check if .git directory exists
             if [ -d .git ]; then
               echo "Updating existing git repository..."
-              git fetch origin main
-              git reset --hard origin/main
+              git fetch origin main || { echo "git fetch failed"; exit 1; }
+              git reset --hard origin/main || { echo "git reset failed"; exit 1; }
               git clean -fd
+              echo "Code updated to commit: $(git rev-parse --short HEAD)"
             else
               echo "No git repository found - cloning from GitHub..."
               # Remove any existing files and clone fresh
               rm -rf ./* ./..?* 2>/dev/null || true
-              git clone --depth 1 --branch main git@github.com:${{ github.repository }}.git .
+              git clone --depth 1 --branch main git@github.com:${{ github.repository }}.git . || { echo "git clone failed"; exit 1; }
+              echo "Code cloned at commit: $(git rev-parse --short HEAD)"
             fi
             
-            echo "Code deployed successfully"
+            # Verify required files exist after git update
+            if [ ! -f pyproject.toml ]; then
+              echo "ERROR: pyproject.toml not found after git update!"
+              echo "Current files:"
+              ls -la
+              exit 1
+            fi
+            
+            if [ ! -f uv.lock ]; then
+              echo "ERROR: uv.lock not found after git update!"
+              exit 1
+            fi
+            
+            echo "✅ Code deployed successfully"
+            
+            # Clean up old venv folder if it exists (migration from venv to .venv)
+            if [ -d venv ] && [ ! -L venv ]; then
+              echo "Removing old venv folder..."
+              rm -rf venv
+            fi
             
             # Create virtual environment and install dependencies using uv
             echo "Setting up Python environment with uv..."
             if [ ! -d .venv ]; then
               echo "Creating virtual environment and installing dependencies..."
-              uv sync --frozen
+              uv sync --frozen --no-install-project || { echo "uv sync failed during venv creation"; exit 1; }
             else
               echo "Syncing dependencies with uv.lock..."
-              uv sync --frozen
+              uv sync --frozen --no-install-project || { echo "uv sync failed during dependency update"; exit 1; }
             fi
+            
+            echo "✅ Dependencies installed successfully"
             
             # Ensure scripts are executable
             chmod +x scripts/deploy.sh
@@ -314,16 +337,30 @@ jobs:
         run: |
           echo "Rolling back to previous version..."
           ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'ENDSSH'
-            set -e
+            # Don't use set -e in rollback - we want to try everything even if steps fail
             cd "${{ secrets.DEPLOY_PATH }}"
             
             # Check if .git exists for git-based rollback
             if [ -d .git ]; then
               echo "Rolling back using git..."
-              git reset --hard HEAD~1
-              uv sync --frozen
-              sudo systemctl restart securepay-wallet || true
-              echo "Rollback complete"
+              git reset --hard HEAD~1 || { echo "git reset failed"; exit 1; }
+              echo "Rolled back to commit: $(git rev-parse --short HEAD)"
+              
+              # Try to sync dependencies - fallback to requirements.txt if uv.lock doesn't exist
+              if [ -f uv.lock ]; then
+                echo "Using uv.lock for dependencies..."
+                uv sync --frozen --no-install-project || echo "⚠️ uv sync failed"
+              elif [ -f requirements.txt ]; then
+                echo "Using requirements.txt for dependencies (old commit)..."
+                source .venv/bin/activate 2>/dev/null || python3 -m venv .venv && source .venv/bin/activate
+                pip install -r requirements.txt || echo "⚠️ pip install failed"
+              else
+                echo "⚠️ No dependency file found (uv.lock or requirements.txt)"
+              fi
+              
+              # Always try to restart service even if dependency install failed
+              sudo systemctl restart securepay-wallet || echo "⚠️ Service restart failed"
+              echo "Rollback complete (service may need manual verification)"
             else
               echo "Cannot rollback: git repository not found"
               echo "Manual intervention required"

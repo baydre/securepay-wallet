@@ -155,7 +155,8 @@ log_success "Python environment ready"
 log_info "Installing/updating dependencies..."
 
 # Install/sync dependencies using uv (reads from uv.lock for reproducibility)
-uv sync --frozen
+# --no-install-project: don't install project itself (flat layout application)
+uv sync --frozen --no-install-project
 log_success "Dependencies installed"
 
 # Activate virtual environment after sync

@@ -368,10 +368,13 @@ jobs:
             
             echo "✅ Service is active"
             
-            # Check if port is listening
-            if ! sudo netstat -tlnp | grep -q ':8000.*LISTEN'; then
+            # Check if port is listening using ss (modern replacement for netstat)
+            if ! ss -tlnp | grep -q ':8000.*LISTEN'; then
               echo "❌ Port 8000 is not listening"
-              sudo netstat -tlnp | grep 8000 || echo "No processes on port 8000"
+              echo "Current listening ports:"
+              ss -tlnp | grep LISTEN || echo "No listening ports found"
+              echo "Checking for any processes on port 8000:"
+              ss -tlnp | grep 8000 || echo "No processes found on port 8000"
               exit 1
             fi
             

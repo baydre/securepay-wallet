@@ -137,6 +137,19 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
         }
 
 
+@router.get("/debug/config")
+async def debug_config():
+    """
+    Debug endpoint to check current configuration (remove in production)
+    """
+    return {
+        "environment": settings.environment,
+        "backend_url": settings.backend_url,
+        "frontend_url": settings.frontend_url,
+        "google_redirect_uri": settings.google_redirect_uri
+    }
+
+
 @router.get("/me")
 async def get_current_user_info(
     current_user: models.User = Depends(get_current_user),
